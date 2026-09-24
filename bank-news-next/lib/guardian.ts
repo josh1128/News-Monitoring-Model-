@@ -1,12 +1,8 @@
 /**
- * lib/guardian.ts — GUARDIAN API CLIENT (public-safe source)
- * ----------------------------------------------------------
- * The Guardian's Open Platform API is free and permits production use.
- * Get a key at https://open-platform.theguardian.com/access/
- * Set GUARDIAN_API_KEY in .env.local (the literal key "test" also works for
- * light development use).
- *
- * Docs: https://open-platform.theguardian.com/documentation/
+ * lib/guardian.ts — GUARDIAN API CLIENT (server-side only)
+ * --------------------------------------------------------
+ * Set GUARDIAN_API_KEY in Vercel Environment Variables (and .env.local
+ * for local development). Never commit the literal API key to the repo.
  */
 
 import type { Article } from "./types";
@@ -22,29 +18,71 @@ type GuardianResult = {
   fields?: { trailText?: string; byline?: string };
 };
 
+function getGuardianApiKey(): string {
+  const key = process.env.GUARDIAN_API_KEY?.trim();
+  if (!key) {
+    throw new Error(
+      "GUARDIAN_API_KEY is not configured. Add it in Vercel → Project Settings → Environment Variables, then redeploy."
+    );
+  }
+  return key;
+}
+
+async function guardianRequest(url: string): Promise<Response> {
+  // Do not cache authenticated API failures. This also ensures a newly updated
+  // Vercel environment variable is used immediately after a redeploy.
+  const res = await fetch(url, { cache: "no-store" });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(
+        "Guardian API authentication failed. Check GUARDIAN_API_KEY in Vercel and redeploy the Production deployment."
+      );
+    }
+    throw new Error(`Guardian API ${res.status}${body ? `: ${body}` : ""}`);
+  }
+
+  return res;
+}
+
+/**
+ * Lightweight auth check used before fan-out requests. This prevents one bad
+ * key from producing the same warning once for every bank.
+ */
+export async function verifyGuardianConnection(): Promise<void> {
+  const key = getGuardianApiKey();
+  const params = new URLSearchParams({
+    q: "bank",
+    "page-size": "1",
+    "api-key": key,
+  });
+
+  await guardianRequest(`${BASE}?${params.toString()}`);
+}
+
 export async function fetchGuardian(opts: {
-  entity: string;          // display label (bank / country)
+  entity: string;
   region: string;
-  terms: string[];         // search terms, OR'd
-  from: string;            // YYYY-MM-DD
-  to: string;              // YYYY-MM-DD
+  terms: string[];
+  from: string;
+  to: string;
   pageSize?: number;
 }): Promise<Article[]> {
-  const key = process.env.GUARDIAN_API_KEY || "test";
-  // Guardian query syntax: quoted phrases OR'd together.
+  const key = getGuardianApiKey();
   const q = opts.terms.map((t) => `"${t}"`).join(" OR ");
 
-  const url =
-    `${BASE}?q=${encodeURIComponent(q)}` +
-    `&from-date=${opts.from}&to-date=${opts.to}` +
-    `&page-size=${opts.pageSize ?? 25}` +
-    `&order-by=newest&show-fields=trailText,byline` +
-    `&api-key=${encodeURIComponent(key)}`;
+  const params = new URLSearchParams({
+    q,
+    "from-date": opts.from,
+    "to-date": opts.to,
+    "page-size": String(opts.pageSize ?? 25),
+    "order-by": "newest",
+    "show-fields": "trailText,byline",
+    "api-key": key,
+  });
 
-  const res = await fetch(url, { next: { revalidate: 900 } });
-  if (!res.ok) {
-    throw new Error(`Guardian API ${res.status}: ${await res.text().catch(() => "")}`);
-  }
+  const res = await guardianRequest(`${BASE}?${params.toString()}`);
   const json = (await res.json()) as { response?: { results?: GuardianResult[] } };
   const results = json.response?.results ?? [];
 
