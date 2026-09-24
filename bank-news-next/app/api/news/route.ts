@@ -15,7 +15,7 @@
 import { NextResponse } from "next/server";
 import { BANKS_BY_REGION, SOVEREIGNS, ALL_REGIONS } from "@/lib/banks";
 import { classify, scoreRelevance, band } from "@/lib/themes";
-import { fetchGuardian } from "@/lib/guardian";
+import { fetchGuardian, verifyGuardianConnection } from "@/lib/guardian";
 import { fetchNyt, type NytTarget } from "@/lib/nyt";
 import type { Article, EnrichedArticle } from "@/lib/types";
 
@@ -67,27 +67,41 @@ export async function GET(req: Request) {
   const warnings: string[] = [];
   const raw: Article[] = [];
 
-  // ---- Guardian: one request per entity (generous limits) --------------
+  // ---- Guardian: validate auth once, then query entities in parallel ----
   if (provider === "guardian" || provider === "both") {
-    const settled = await Promise.allSettled(
-      targets.map((t) =>
-        fetchGuardian({
-          entity: t.entity,
-          region: t.region,
-          terms: t.terms,
-          from,
-          to,
-          pageSize: limit,
-        })
-      )
-    );
-    settled.forEach((r, i) => {
-      if (r.status === "fulfilled") raw.push(...r.value);
-      else
-        warnings.push(
-          `Guardian · ${targets[i].entity}: ${String((r as PromiseRejectedResult).reason?.message ?? (r as PromiseRejectedResult).reason)}`
-        );
-    });
+    try {
+      await verifyGuardianConnection();
+
+      const settled = await Promise.allSettled(
+        targets.map((t) =>
+          fetchGuardian({
+            entity: t.entity,
+            region: t.region,
+            terms: t.terms,
+            from,
+            to,
+            pageSize: limit,
+          })
+        )
+      );
+
+      settled.forEach((r, i) => {
+        if (r.status === "fulfilled") {
+          raw.push(...r.value);
+        } else {
+          warnings.push(
+            `Guardian · ${targets[i].entity}: ${String(
+              (r as PromiseRejectedResult).reason?.message ??
+                (r as PromiseRejectedResult).reason
+            )}`
+          );
+        }
+      });
+    } catch (e: any) {
+      // Missing/invalid credentials now generate one clear warning instead of
+      // repeating the same 401 once for every bank.
+      warnings.push(`Guardian: ${String(e?.message ?? e)}`);
+    }
   }
 
   // ---- NYT: batched + throttled (5 req/min, 500/day) -------------------
