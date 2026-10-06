@@ -28,6 +28,9 @@ export const THEME_KEYWORDS: Record<string, string[]> = {
   "Trade & Tariffs": ["tariff", "tariffs", "trade war", "trade deal", "import duty",
     "countervailing", "anti-dumping", "section 232", "section 301", "protectionism",
     "trade dispute", "usmca", "cusma", "wto"],
+  "Elections": ["election", "elections", "snap election", "general election", "presidential election",
+    "parliamentary election", "election campaign", "election result", "election results", "ballot",
+    "opinion poll", "polling"],
   "Geopolitical Risk": ["war", "sanctions", "iran", "russia", "china", "conflict", "geopolitic"],
 };
 
@@ -39,6 +42,7 @@ export const HIGH_SIGNAL = new Set([
   "Earnings",
   "Regulation / OSFI",
   "Trade & Tariffs",
+  "Elections",
 ]);
 
 /** Junk patterns → forced to a near-zero score so the slider hides them. */
