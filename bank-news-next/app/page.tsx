@@ -11,6 +11,7 @@ import { ALL_THEMES } from "@/lib/themes";
 import type { EnrichedArticle } from "@/lib/types";
 import Charts from "@/components/Charts";
 import ArticleCard from "@/components/ArticleCard";
+import DailyDigest from "@/components/DailyDigest";
 
 function daysAgo(n: number) {
   const d = new Date();
@@ -250,6 +251,8 @@ export default function Page() {
 
           {filtered.length > 0 && (
             <>
+              <DailyDigest articles={filtered} />
+
               <Charts articles={filtered} />
 
               <section className="rounded-xl border bg-white p-5 shadow-sm">
