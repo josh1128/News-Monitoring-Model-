@@ -74,7 +74,7 @@ export default function DailyDigest({ articles }: { articles: EnrichedArticle[] 
       );
     });
 
-    const topThemes = [...themeCounts.entries()]
+    const topThemes = Array.from(themeCounts.entries())
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3)
       .map(([theme]) => theme);
